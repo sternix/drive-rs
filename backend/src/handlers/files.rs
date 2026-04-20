@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::middleware::AuthUser;
-use crate::models::{FileListParams, FileMoveRequest, FileRecord, FileRenameRequest, FileUploadParams};
+use crate::models::{FileListParams, FileMoveRequest, FileRecord, FileRenameRequest, FileUploadParams, User};
 
 pub async fn upload(
     State(state): State<AppState>,
@@ -30,6 +30,15 @@ pub async fn upload(
             .content_type()
             .map(|s| s.to_string())
             .unwrap_or_else(|| "application/octet-stream".to_string());
+
+        let client = state.db.get().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        // Check storage limit before writing chunks to disk.
+        let user_row = client
+            .query_one("SELECT * FROM users WHERE id = $1", &[&auth.user_id])
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let user = User::from(user_row);
         
         // Create storage directory
         let storage_dir = PathBuf::from(&state.config.upload_dir).join(auth.user_id.to_string());
@@ -46,8 +55,17 @@ pub async fn upload(
         // Stream file with hash calculation
         let mut hasher = Sha256::new();
         let mut size: i64 = 0;
-        
-        while let Ok(Some(chunk)) = field.chunk().await {
+        loop {
+            let maybe_chunk = field.chunk().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+            let Some(chunk) = maybe_chunk else {
+                break;
+            };
+
+            if user.storage_used + size + (chunk.len() as i64) > user.storage_limit {
+                let _ = tokio::fs::remove_file(&storage_path).await;
+                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+            }
+
             hasher.update(&chunk);
             file.write_all(&chunk)
                 .await
@@ -58,8 +76,6 @@ pub async fn upload(
         let hash = hex::encode(hasher.finalize());
 
         let storage_path_str = storage_path.to_string_lossy().to_string();
-
-        let client = state.db.get().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         // Insert record
         let row = client
