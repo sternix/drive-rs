@@ -67,9 +67,9 @@ CREATE TABLE IF NOT EXISTS transfer_sessions (
 );
 
 -- Indexes
-CREATE INDEX idx_files_owner ON files(owner_id);
-CREATE INDEX idx_files_folder ON files(folder_id);
-CREATE INDEX idx_folders_owner ON folders(owner_id);
-CREATE INDEX idx_folders_parent ON folders(parent_id);
-CREATE INDEX idx_share_links_token ON share_links(token);
-CREATE INDEX idx_transfer_sessions_token ON transfer_sessions(token);
+CREATE INDEX IF NOT EXISTS idx_files_owner ON files(owner_id);
+CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder_id);
+CREATE INDEX IF NOT EXISTS idx_folders_owner ON folders(owner_id);
+CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);
+CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token);
+CREATE INDEX IF NOT EXISTS idx_transfer_sessions_token ON transfer_sessions(token);

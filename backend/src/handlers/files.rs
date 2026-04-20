@@ -7,13 +7,12 @@ use axum::{
 };
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::AppState;
 use crate::middleware::AuthUser;
-use crate::models::{FileListParams, FileMoveRequest, FileRecord, FileRenameRequest, FileUploadParams, User};
+use crate::models::{FileListParams, FileMoveRequest, FileRecord, FileRenameRequest, FileUploadParams};
 
 pub async fn upload(
     State(state): State<AppState>,
@@ -21,7 +20,7 @@ pub async fn upload(
     Query(params): Query<FileUploadParams>,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, StatusCode> {
-    while let Some(field) = multipart.next_field().await.map_err(|_| StatusCode::BAD_REQUEST)? {
+    while let Some(mut field) = multipart.next_field().await.map_err(|_| StatusCode::BAD_REQUEST)? {
         let original_name = field
             .file_name()
             .map(|s| s.to_string())
@@ -31,44 +30,36 @@ pub async fn upload(
             .content_type()
             .map(|s| s.to_string())
             .unwrap_or_else(|| "application/octet-stream".to_string());
-
-        let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-        let size = data.len() as i64;
-
-        let client = state.db.get().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        // Check storage limit
-        let user_row = client
-            .query_one("SELECT * FROM users WHERE id = $1", &[&auth.user_id])
+        
+        // Create storage directory
+        let storage_dir = PathBuf::from(&state.config.upload_dir).join(auth.user_id.to_string());
+        tokio::fs::create_dir_all(&storage_dir)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let user = User::from(user_row);
 
-        if user.storage_used + size > user.storage_limit {
-            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        let file_id = Uuid::new_v4();
+        let storage_path = storage_dir.join(file_id.to_string());
+        let mut file = tokio::fs::File::create(&storage_path)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        // Stream file with hash calculation
+        let mut hasher = Sha256::new();
+        let mut size: i64 = 0;
+        
+        while let Ok(Some(chunk)) = field.chunk().await {
+            hasher.update(&chunk);
+            file.write_all(&chunk)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            size += chunk.len() as i64;
         }
 
-        // Calculate hash
-        let mut hasher = Sha256::new();
-        hasher.update(&data);
         let hash = hex::encode(hasher.finalize());
 
-        // Store file
-        let file_id = Uuid::new_v4();
-        let storage_dir = PathBuf::from(&state.config.upload_dir).join(auth.user_id.to_string());
-        fs::create_dir_all(&storage_dir)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        let storage_path = storage_dir.join(file_id.to_string());
-        let mut file = fs::File::create(&storage_path)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        file.write_all(&data)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
         let storage_path_str = storage_path.to_string_lossy().to_string();
+
+        let client = state.db.get().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         // Insert record
         let row = client
@@ -143,7 +134,7 @@ pub async fn download(
 
     let file = FileRecord::from(row);
 
-    let body = fs::read(&file.storage_path)
+    let body = tokio::fs::read(&file.storage_path)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -176,7 +167,7 @@ pub async fn delete(
 
     let file = FileRecord::from(row);
 
-    let _ = fs::remove_file(&file.storage_path).await;
+    let _ = tokio::fs::remove_file(&file.storage_path).await;
 
     client
         .execute("DELETE FROM files WHERE id = $1", &[&file_id])

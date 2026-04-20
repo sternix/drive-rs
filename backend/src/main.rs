@@ -10,6 +10,7 @@ use axum::{
     Router,
     routing::{delete, get, patch, post, put},
 };
+use axum::extract::DefaultBodyLimit;
 use deadpool_postgres::{Config, Runtime, Pool};
 use tokio::sync::{RwLock, broadcast};
 use tokio_postgres::NoTls;
@@ -86,7 +87,8 @@ async fn main() {
         .route("/{id}", get(handlers::files::download))
         .route("/{id}", delete(handlers::files::delete))
         .route("/{id}/rename", patch(handlers::files::rename))
-        .route("/{id}/move", put(handlers::files::move_file));
+        .route("/{id}/move", put(handlers::files::move_file))
+        .layer(DefaultBodyLimit::max(5 * 1024 * 1024 * 1024)); // 5GB limit
 
     let folder_routes = Router::new()
         .route("/", get(handlers::folders::list))
