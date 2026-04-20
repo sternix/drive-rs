@@ -253,7 +253,7 @@
 						<span class="file-meta">{formatBytes(file.size)}</span>
 					</div>
 					<div class="file-actions">
-						<button class="btn-icon" title="İndir" onclick={() => downloadFile(file.id, file.original_name)}>⬇</button>
+						<button class="btn-icon btn-icon-download" title="İndir" onclick={() => downloadFile(file.id, file.original_name)}>↓</button>
 						<button class="btn-icon" title="Paylaş" onclick={() => shareFile(file.id)}>🔗</button>
 						<button class="btn-icon" title="Sil" onclick={() => deleteFile(file.id)}>🗑</button>
 					</div>
@@ -475,6 +475,12 @@
 
 	.btn-icon:hover {
 		background: var(--bg-tertiary);
+	}
+
+	.btn-icon-download {
+		font-size: 1.25rem;
+		color: #fff;
+		font-weight: 700;
 	}
 
 	.modal-overlay {
