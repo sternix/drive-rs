@@ -1,3 +1,6 @@
-Chrome'da drag and drop upload doğru çalışmıyor,
-drag drop upload alanı belirgin olabilir
-frontend'deki eski store runes'lu store ile değiştirilebilir
+- Chrome'da drag and drop upload doğru çalışmıyor,
+- drag drop upload alanı belirgin olabilir
+- frontend'deki eski store runes'lu store ile değiştirilebilir
+- kendi STUN sunucu kurulumu şu anda 'stun:stun.l.google.com:19302' }]
+- ldap desteği
+- ldap'taki başka bir kullanıcıya dosya paylaşımı ( ldap adres defteri )
