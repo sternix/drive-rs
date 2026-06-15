@@ -125,6 +125,7 @@ async fn main() {
         .nest("/api/transfer", transfer_routes)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
+        .fallback(serve_static)
         .with_state(state);
 
     let addr = format!("{}:{}", app_config.host, app_config.port);

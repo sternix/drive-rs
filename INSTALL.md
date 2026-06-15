@@ -10,3 +10,6 @@ create database drive with owner drive_usr;
 
 DATABASE_URL=postgresql://user:password@host:port/dbname
 DATABASE_URL=postgresql://drive_usr:secret@localhost:5432/drive
+
+mkdir -p /opt/drive/uploads
+cp example.env /opt/drive/.env
