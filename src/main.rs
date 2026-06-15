@@ -6,12 +6,17 @@ mod models;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::{
     Router,
+    body::Body,
+    http::{StatusCode, header},
+    response::Response,
     routing::{delete, get, patch, post, put},
 };
-use axum::extract::DefaultBodyLimit;
-use deadpool_postgres::{Config, Runtime, Pool};
+use deadpool_postgres::{Config, Pool, Runtime};
+use include_dir::{Dir, include_dir};
+use mime_guess::from_path;
 use tokio::sync::{RwLock, broadcast};
 use tokio_postgres::NoTls;
 use tower_http::cors::{Any, CorsLayer};
@@ -27,10 +32,15 @@ pub struct AppState {
     pub transfer_channels: Arc<RwLock<HashMap<String, Arc<broadcast::Sender<String>>>>>,
 }
 
+// Derleme anında ui/build klasörünü binary'e ekle
+static UI: Dir = include_dir!("$CARGO_MANIFEST_DIR/ui/build");
+
 #[tokio::main]
 async fn main() {
     // Load .env
     dotenvy::dotenv().ok();
+
+    print_version();
 
     // Init tracing
     tracing_subscriber::registry()
@@ -124,7 +134,52 @@ async fn main() {
         .await
         .expect("Failed to bind");
 
-    axum::serve(listener, app)
-        .await
-        .expect("Server error");
+    axum::serve(listener, app).await.expect("Server error");
+}
+
+fn print_version() {
+    use chrono::{DateTime, Local};
+
+    let commit_branch = env!("VERGEN_GIT_BRANCH");
+    let commit_hash = env!("VERGEN_GIT_SHA");
+    const GIT_TIMESTAMP: &str = env!("VERGEN_GIT_COMMIT_TIMESTAMP");
+
+    let commit_date = if let Ok(parsed_date) = DateTime::parse_from_rfc3339(GIT_TIMESTAMP) {
+        // 2. Yerel saate veya Utc'ye çevir
+        let local_date = parsed_date.with_timezone(&Local);
+
+        // 3. İstediğin gibi formatla (Örn: 04 May 2026 11:04)
+        local_date.format("%d %b %Y %H:%M").to_string()
+    } else {
+        // Eğer parse başarısız olursa ham halini göster
+        GIT_TIMESTAMP.to_string()
+    };
+
+    println!("Commit Branch: {commit_branch}");
+    println!("Commit Hash: {commit_hash}");
+    println!("Commit Tarihi: {commit_date}");
+}
+
+async fn serve_static(uri: axum::http::Uri) -> Response {
+    let path = uri.path().trim_start_matches('/');
+
+    // Önce tam eşleşme dene
+    let file = UI
+        .get_file(path)
+        // Bulamazsan SPA fallback: index.html
+        .or_else(|| UI.get_file("index.html"));
+
+    match file {
+        Some(f) => {
+            let mime = from_path(f.path()).first_or_octet_stream();
+            Response::builder()
+                .header(header::CONTENT_TYPE, mime.as_ref())
+                .body(Body::from(f.contents()))
+                .unwrap()
+        }
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("404"))
+            .unwrap(),
+    }
 }

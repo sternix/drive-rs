@@ -21,14 +21,14 @@ target
 #.idea/
 
 # Backend
-backend/uploads/
-backend/.env
+uploads/
+.env
 
 # Frontend
-frontend/node_modules/
-frontend/.svelte-kit/
-frontend/build/
-frontend/dist/
+ui/node_modules/
+ui/.svelte-kit/
+ui/build/
+ui/dist/
 
 # IDE
 .vscode/
